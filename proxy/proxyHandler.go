@@ -13,6 +13,7 @@ func proxyHandler(target string) func(w http.ResponseWriter, r *http.Request) {
 		// get token or redirect to login
 		token, err := getTokenCookie(r)
 		if err != nil {
+			fmt.Printf("failed to get cookie: %s\n", err)
 			http.Redirect(w, r, "/login", 302)
 			return
 		}

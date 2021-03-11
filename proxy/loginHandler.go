@@ -2,7 +2,7 @@ package proxy
 
 import (
 	"crypto/tls"
-	_ "embed"
+	_ "embed" //embed web resources for login page
 	"encoding/json"
 	"fmt"
 	"io"
@@ -69,6 +69,13 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 			return
 		}
 		defer resp.Body.Close()
+
+		// Check HTTP code for login succeeded
+		if resp.StatusCode != 200 {
+			fmt.Printf("login failed with non 200 http code for login response body: %d\n", resp.StatusCode)
+			http.Redirect(w, r, "/login", 302)
+			return
+		}
 
 		// Read JSON response
 		body, err := io.ReadAll(resp.Body)
