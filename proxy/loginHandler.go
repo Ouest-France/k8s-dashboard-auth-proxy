@@ -20,7 +20,10 @@ type TanzuAuthResult struct {
 
 // loginGetHandler displays the login form
 func loginGetHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write(loginPage)
+	_, err := w.Write(loginPage)
+	if err != nil {
+		fmt.Printf("failed to write login page: %s", err)
+	}
 }
 
 // loginPostHandler handles the Tanzu authentication logic
@@ -34,7 +37,7 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		// Check that username and password are defined
 		if username == "" || password == "" {
 			fmt.Println("username or password empty")
-			w.Write(loginPage)
+			http.Redirect(w, r, "/login", 302)
 			return
 		}
 
@@ -48,7 +51,7 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		req, err := http.NewRequest("POST", loginURL, strings.NewReader(payload))
 		if err != nil {
 			fmt.Printf("failed to create login request: %s\n", err)
-			w.Write(loginPage)
+			http.Redirect(w, r, "/login", 302)
 			return
 		}
 
@@ -62,7 +65,7 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Printf("login request failed: %s\n", err)
-			w.Write(loginPage)
+			http.Redirect(w, r, "/login", 302)
 			return
 		}
 		defer resp.Body.Close()
@@ -71,18 +74,23 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			fmt.Printf("failed to read login response body: %s\n", err)
-			w.Write(loginPage)
+			http.Redirect(w, r, "/login", 302)
 			return
 		}
 		var TanzuAuthResult TanzuAuthResult
 		err = json.Unmarshal(body, &TanzuAuthResult)
 		if err != nil {
 			fmt.Printf("failed to unmarshal json login response: %s\n", err)
-			w.Write(loginPage)
+			http.Redirect(w, r, "/login", 302)
 			return
 		}
 
-		setTokenCookie(w, TanzuAuthResult.SessionID)
+		err = setTokenCookie(w, TanzuAuthResult.SessionID)
+		if err != nil {
+			fmt.Printf("failed to set token cookie: %s\n", err)
+			http.Redirect(w, r, "/login", 302)
+			return
+		}
 
 		http.Redirect(w, r, "/", 302)
 	}
