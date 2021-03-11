@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	_ "embed"
 	"net/http"
 
 	"github.com/go-chi/chi"
