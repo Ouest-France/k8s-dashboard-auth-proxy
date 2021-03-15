@@ -83,8 +83,7 @@ func compressToken(token string) (string, error) {
 func uncompressToken(b64Token string) (string, error) {
 	token, err := base64.StdEncoding.DecodeString(b64Token)
 	if err != nil {
-		fmt.Printf("failed to decode base64 token: %s\n", err)
-		return "", err
+		return "", fmt.Errorf("failed to decode base64 token: %s", err)
 	}
 
 	zr, err := gzip.NewReader(bytes.NewBuffer(token))

@@ -5,13 +5,16 @@ import (
 	_ "embed" //embed web resources for login page
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
-//go:embed embed/login.html
-var loginPage []byte
+//go:embed embed/login.html.tmpl
+var loginPageTemplate string
 
 // TanzuAuthResult represents the JSON response from Tanzu Auth
 type TanzuAuthResult struct {
@@ -20,9 +23,26 @@ type TanzuAuthResult struct {
 
 // loginGetHandler displays the login form
 func loginGetHandler(w http.ResponseWriter, r *http.Request) {
-	_, err := w.Write(loginPage)
+
+	// Retrieve login error message from URL
+	var loginErrorMessage string
+	queryLoginError, ok := r.URL.Query()["error"]
+	if ok && len(queryLoginError) == 1 {
+		loginErrorMessage = queryLoginError[0]
+	}
+
+	// Parse login template
+	tmpl, err := template.New("login").Parse(loginPageTemplate)
 	if err != nil {
-		fmt.Printf("failed to write login page: %s", err)
+		log.Printf("failed to parse login page template: %s", err)
+		return
+	}
+
+	// Execute template with login error if provided in URL
+	err = tmpl.ExecuteTemplate(w, "login", loginErrorMessage)
+	if err != nil {
+		log.Printf("failed to execute login page template: %s", err)
+		return
 	}
 }
 
@@ -36,8 +56,8 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 
 		// Check that username and password are defined
 		if username == "" || password == "" {
-			fmt.Println("username or password empty")
-			http.Redirect(w, r, "/login", 302)
+			log.Printf("username or password empty")
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password empty")), 302)
 			return
 		}
 
@@ -50,8 +70,8 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		// Create login request
 		req, err := http.NewRequest("POST", loginURL, strings.NewReader(payload))
 		if err != nil {
-			fmt.Printf("failed to create login request: %s\n", err)
-			http.Redirect(w, r, "/login", 302)
+			log.Printf("creating login request: %s", err)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
 			return
 		}
 
@@ -64,38 +84,38 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		// Send login request
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Printf("login request failed: %s\n", err)
-			http.Redirect(w, r, "/login", 302)
+			log.Printf("login request failed: %s", err)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
 			return
 		}
 		defer resp.Body.Close()
 
 		// Check HTTP code for login succeeded
 		if resp.StatusCode != 200 {
-			fmt.Printf("login failed with non 200 http code for login response body: %d\n", resp.StatusCode)
-			http.Redirect(w, r, "/login", 302)
+			log.Printf("login failed with non 200 http code for login response body: %d", resp.StatusCode)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Invalid credentials")), 302)
 			return
 		}
 
 		// Read JSON response
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Printf("failed to read login response body: %s\n", err)
-			http.Redirect(w, r, "/login", 302)
+			log.Printf("failed to read login response body: %s", err)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
 			return
 		}
 		var TanzuAuthResult TanzuAuthResult
 		err = json.Unmarshal(body, &TanzuAuthResult)
 		if err != nil {
-			fmt.Printf("failed to unmarshal json login response: %s\n", err)
-			http.Redirect(w, r, "/login", 302)
+			log.Printf("failed to unmarshal json login response: %s", err)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
 			return
 		}
 
 		err = setTokenCookie(w, TanzuAuthResult.SessionID)
 		if err != nil {
-			fmt.Printf("failed to set token cookie: %s\n", err)
-			http.Redirect(w, r, "/login", 302)
+			log.Printf("failed to set token cookie: %s", err)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
 			return
 		}
 

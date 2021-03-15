@@ -10,6 +10,7 @@
             Kubernetes Dashboard
         </div>
         <div style="background-color: #ffffff; padding: 10px 15px 10px 15px;">
+            {{if .}}<div style="margin-top: 20px; color: #ff0000; font-weight: bold;">{{.}}</div>{{end}}
             <form action="/login" method="POST">
                 <div style="margin-top: 20px;">
                     <label>Username</label>

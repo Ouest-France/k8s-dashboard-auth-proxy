@@ -1,20 +1,19 @@
 package proxy
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
 )
 
 func Server(loginURL, guestClusterName, proxyURL string) error {
 
-	// Create router
-	r := chi.NewRouter()
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Logger)
+	// Remove timestamp from logs
+	log.SetFlags(0)
 
-	// Register handlers
+	// Create router and register handlers
+	r := chi.NewRouter()
 	r.HandleFunc("/*", proxyHandler(proxyURL))
 	r.Get("/login", loginGetHandler)
 	r.Post("/login", loginPostHandler(loginURL, guestClusterName))
