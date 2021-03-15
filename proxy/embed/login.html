@@ -4,20 +4,31 @@
     <title>Kubernetes login</title>
 </head>
 
-<body>
-    <form action="/login" method="POST">
-        <div>
-            <label>Username</label>
-            <input name="username" id="username">
+<body style="margin: 0px; background-color: #edeff0;">
+    <div style="margin-left: auto; margin-right: auto; width: 800px;">
+        <div style="background-color: #326de6; color: #ffffff; padding: 15px; font-weight: bold; font-size: x-large;">
+            Kubernetes Dashboard
         </div>
-        <div>
-            <label>Password</label>
-            <input name="password" id="password" type="password">
+        <div style="background-color: #ffffff; padding: 10px 15px 10px 15px;">
+            <form action="/login" method="POST">
+                <div style="margin-top: 20px;">
+                    <label>Username</label>
+                    <input name="username" id="username" autocomplete="username"
+                        style="width: 200px; border-style: solid; border-radius: 5px;">
+                </div>
+                <div style="margin-top: 20px;">
+                    <label>Password</label>
+                    <input name="password" id="password" autocomplete="current-password" type="password"
+                        style="width: 200px; border-style: solid; border-radius: 5px;">
+                </div>
+                <div style="margin-top: 20px;">
+                    <button
+                        style="border-style: solid; background-color: #326de6; color: #ffffff; font-weight: bold; padding: 10px; border-radius: 5px; cursor: pointer;">Sign
+                        In</button>
+                </div>
+            </form>
         </div>
-        <div>
-            <button>Log In</button>
-        </div>
-    </form>
+    </div>
 </body>
 
 </html>
