@@ -208,7 +208,7 @@ func Test_setTokenCookie(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			setTokenCookie(recorder, tt.args.token, 10)
-			request := &http.Request{Header: http.Header{"Cookie": recorder.HeaderMap["Set-Cookie"]}}
+			request := &http.Request{Header: http.Header{"Cookie": recorder.HeaderMap["Set-Cookie"]}} //nolint
 
 			for wantCookieName, wantCookieValue := range tt.want {
 				cookie, err := request.Cookie(wantCookieName)
