@@ -52,15 +52,6 @@ func getTokenCookie(r *http.Request) (string, error) {
 		token = token + tokenPartCookie.Value
 	}
 
-	// // Check if token expired
-	// expired, err := tokenExpired(token)
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to check if token expired: %s", err)
-	// }
-	// if expired {
-	// 	return "", errors.New("token expired")
-	// }
-
 	return token, nil
 }
 
