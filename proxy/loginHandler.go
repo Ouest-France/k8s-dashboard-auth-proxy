@@ -57,7 +57,7 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		// Check that username and password are defined
 		if username == "" || password == "" {
 			log.Printf("username or password empty")
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password empty")), 302)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password empty")), http.StatusFound)
 			return
 		}
 
@@ -71,7 +71,7 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		req, err := http.NewRequest("POST", loginURL, strings.NewReader(payload))
 		if err != nil {
 			log.Printf("creating login request: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), http.StatusFound)
 			return
 		}
 
@@ -85,7 +85,7 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("login request failed: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), http.StatusFound)
 			return
 		}
 		defer resp.Body.Close()
@@ -93,7 +93,7 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		// Check HTTP code for login succeeded
 		if resp.StatusCode != 200 {
 			log.Printf("login failed with non 200 http code for login response body: %d", resp.StatusCode)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Invalid credentials")), 302)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Invalid credentials")), http.StatusFound)
 			return
 		}
 
@@ -101,24 +101,22 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Printf("failed to read login response body: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), http.StatusFound)
 			return
 		}
 		var TanzuAuthResult TanzuAuthResult
 		err = json.Unmarshal(body, &TanzuAuthResult)
 		if err != nil {
 			log.Printf("failed to unmarshal json login response: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
+			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), http.StatusFound)
 			return
 		}
 
-		err = setTokenCookie(w, TanzuAuthResult.SessionID)
-		if err != nil {
-			log.Printf("failed to set token cookie: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
-			return
-		}
+		// As stated by RFC, cookie size limit must be at least 4096 bytes
+		// so we split the token below this size to be compatible with all
+		// browsers https://stackoverflow.com/a/52492934
+		setTokenCookie(w, TanzuAuthResult.SessionID, 4000)
 
-		http.Redirect(w, r, "/", 302)
+		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
