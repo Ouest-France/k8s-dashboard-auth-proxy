@@ -120,46 +120,6 @@ func Test_splitToken(t *testing.T) {
 	}
 }
 
-func Test_mergeToken(t *testing.T) {
-	type args struct {
-		tokenParts []string
-	}
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "one part",
-			args: args{
-				tokenParts: []string{"012345"},
-			},
-			want: "012345",
-		},
-		{
-			name: "two parts",
-			args: args{
-				tokenParts: []string{"0123456789", "012345"},
-			},
-			want: "0123456789012345",
-		},
-		{
-			name: "three parts",
-			args: args{
-				tokenParts: []string{"0123456789", "0123456789", "0123456789"},
-			},
-			want: "012345678901234567890123456789",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := mergeToken(tt.args.tokenParts); got != tt.want {
-				t.Errorf("mergeToken() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 func Test_setTokenCookie(t *testing.T) {
 	type args struct {
 		token string

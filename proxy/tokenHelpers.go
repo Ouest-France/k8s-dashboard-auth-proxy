@@ -98,13 +98,3 @@ func splitToken(token string, size int) []string {
 
 	return parts
 }
-
-// margeToken merges tokens parts
-func mergeToken(tokenParts []string) string {
-	token := ""
-	for _, tokenPart := range tokenParts {
-		token = token + tokenPart
-	}
-
-	return token
-}
