@@ -112,12 +112,10 @@ func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWri
 			return
 		}
 
-		err = setTokenCookie(w, TanzuAuthResult.SessionID)
-		if err != nil {
-			log.Printf("failed to set token cookie: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), 302)
-			return
-		}
+		// As stated by RFC, cookie size limit must be at least 4096 bytes
+		// so we split the token below this size to be compatible with all
+		// browsers https://stackoverflow.com/a/52492934
+		setTokenCookie(w, TanzuAuthResult.SessionID, 4000)
 
 		http.Redirect(w, r, "/", 302)
 	}
