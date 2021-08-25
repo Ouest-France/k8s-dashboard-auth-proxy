@@ -15,7 +15,20 @@ func proxyHandler(target string) func(w http.ResponseWriter, r *http.Request) {
 		token, err := getTokenCookie(r)
 		if err != nil {
 			log.Printf("failed to get cookie: %s", err)
-			http.Redirect(w, r, "/login", 302)
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+
+		// Check if token expired
+		expired, err := tokenExpired(token)
+		if err != nil {
+			log.Printf("failed to check if token expired: %s", err)
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		if expired {
+			log.Printf("token expired")
+			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
 
