@@ -2,6 +2,12 @@
 
 This is an reverse authentication proxy for Kubernetes dashboard hosted in managed **VMware Tanzu** clusters.
 
+## How it works
+
+When you enter your credentials on the login page, a basic auth request is sent to the supervisor WCP. If credentials are valid the supervisor WCP returns back a JWT token. This proxy stores this JWT token in one or more cookies (token is splitted if too large > 4000Bytes) and redirect to the dashboard.
+
+If there is no token or your token is expired you are automaticaly redirected to login page.
+
 ## How To Use
 
 You can start by downloading the official kubernetes dashboard YAML
