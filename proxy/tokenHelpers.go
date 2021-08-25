@@ -1,14 +1,12 @@
 package proxy
 
 import (
-	"bytes"
-	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,84 +16,52 @@ type JWTPayload struct {
 	Exp int64 `json:"exp"`
 }
 
-// setTokenCookie compress token and set it as cookie
-func setTokenCookie(w http.ResponseWriter, token string) error {
-	compressedToken, err := compressToken(token)
-	if err != nil {
-		return fmt.Errorf("failed to compress token: %s", err)
-	}
-	http.SetCookie(w, &http.Cookie{Name: "proxy_auth_token_gz", Value: compressedToken})
+// setTokenCookie split token by cookieMaxSize and store it as cookies
+func setTokenCookie(w http.ResponseWriter, token string, cookieMaxSize int) {
+	// Split token by cookieMaxSize
+	splittedToken := splitToken(token, cookieMaxSize)
 
-	return nil
+	// We store the number of token parts in proxy_auth_token_parts cookie
+	http.SetCookie(w, &http.Cookie{Name: "proxy_auth_token_parts", Value: fmt.Sprint(len(splittedToken))})
+
+	// We store each token parts in a separate cookie with name proxy_auth_token_X
+	for partIndex, partValue := range splittedToken {
+		http.SetCookie(w, &http.Cookie{Name: fmt.Sprintf("proxy_auth_token_%d", partIndex), Value: partValue})
+	}
 }
 
-// getTokenCookie uncompress token and return it
+// getTokenCookie merge token cookies and return it
 func getTokenCookie(r *http.Request) (string, error) {
-	// Read cookie from request
-	tokenCookie, err := r.Cookie("proxy_auth_token_gz")
-	if err != nil || tokenCookie.Value == "" {
-		return "", errors.New("token proxy_auth_token_gz doesn't exists or is empty")
+	// Read number of parts cookie from request
+	tokenPartsCookie, err := r.Cookie("proxy_auth_token_parts")
+	if err != nil || tokenPartsCookie.Value == "" {
+		return "", errors.New("token proxy_auth_token_parts doesn't exists or is empty")
 	}
-	compressedToken := tokenCookie.Value
-
-	// Uncompress cookie
-	token, err := uncompressToken(compressedToken)
+	parts, err := strconv.Atoi(tokenPartsCookie.Value)
 	if err != nil {
-		return "", fmt.Errorf("failed to uncompress token: %s", err)
+		return "", fmt.Errorf("failed to parse int from token proxy_auth_token_parts cookie: %w", err)
 	}
 
-	// Check token is not empty
-	if token == "" {
-		return "", errors.New("token is empty")
+	// Merge data cookies from request
+	token := ""
+	for i := 0; i < parts; i++ {
+		tokenPartCookie, err := r.Cookie(fmt.Sprintf("proxy_auth_token_%d", i))
+		if err != nil || tokenPartCookie.Value == "" {
+			return "", fmt.Errorf("token proxy_auth_token_%d doesn't exists or is empty", i)
+		}
+		token = token + tokenPartCookie.Value
 	}
 
-	// Check if token expired
-	expired, err := tokenExpired(token)
-	if err != nil {
-		return "", fmt.Errorf("failed to check if token expired: %s", err)
-	}
-	if expired {
-		return "", errors.New("token expired")
-	}
+	// // Check if token expired
+	// expired, err := tokenExpired(token)
+	// if err != nil {
+	// 	return "", fmt.Errorf("failed to check if token expired: %s", err)
+	// }
+	// if expired {
+	// 	return "", errors.New("token expired")
+	// }
 
 	return token, nil
-}
-
-// compressToken gzip and base64 encode a token
-func compressToken(token string) (string, error) {
-	var buf bytes.Buffer
-	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
-	if err != nil {
-		return "", err
-	}
-	_, err = zw.Write([]byte(token))
-	if err != nil {
-		return "", err
-	}
-	err = zw.Close()
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(buf.Bytes()), nil
-}
-
-// uncompressToken base64 decode and ungzip a token
-func uncompressToken(b64Token string) (string, error) {
-	token, err := base64.StdEncoding.DecodeString(b64Token)
-	if err != nil {
-		return "", fmt.Errorf("failed to decode base64 token: %s", err)
-	}
-
-	zr, err := gzip.NewReader(bytes.NewBuffer(token))
-	if err != nil {
-		return "", fmt.Errorf("failed to uncompress token: %s", err)
-	}
-	tokenBytes, err := io.ReadAll(zr)
-	if err != nil {
-		return "", err
-	}
-
-	return string(tokenBytes), nil
 }
 
 // tokenExpired checks if JWT token is expired
@@ -122,4 +88,32 @@ func tokenExpired(rawToken string) (bool, error) {
 
 	// Return true if current timestamp is after JWT expire timestamp
 	return time.Now().After(time.Unix(jwtPayload.Exp, 0)), nil
+}
+
+// splitToken splits a token by size
+func splitToken(token string, size int) []string {
+	parts := []string{}
+	current := 0
+	for {
+		if len(token[current:]) > size {
+			parts = append(parts, token[current:current+size])
+			current = current + size
+			continue
+		}
+
+		parts = append(parts, token[current:])
+		break
+	}
+
+	return parts
+}
+
+// margeToken merges tokens parts
+func mergeToken(tokenParts []string) string {
+	token := ""
+	for _, tokenPart := range tokenParts {
+		token = token + tokenPart
+	}
+
+	return token
 }
