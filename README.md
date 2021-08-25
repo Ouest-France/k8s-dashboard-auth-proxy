@@ -39,7 +39,7 @@ In the *kubernetes-dashboard* deployment definition you have to add the *proxy* 
         - args:
             - -login-url=https://supervisor.yourvcenter.fr/wcp/login
             - -guest-cluster-name=your-guest-cluster
-          image: ouestfrance/k8s-dashboard-auth-proxy:0.2.0
+          image: ouestfrance/k8s-dashboard-auth-proxy:0.3.0
           imagePullPolicy: Always
           name: proxy
           ports:
