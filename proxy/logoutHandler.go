@@ -16,4 +16,7 @@ func logoutGetHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
+	// Redirect to base path
+	http.Redirect(w, r, "/", http.StatusFound)
 }
