@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +54,27 @@ func getTokenCookie(r *http.Request) (string, error) {
 	}
 
 	return token, nil
+}
+
+func deleteTokenCookie(w http.ResponseWriter, r *http.Request) error {
+
+	// Delete proxy_auth_token_parts cookie
+	http.SetCookie(w, &http.Cookie{Name: "proxy_auth_token_parts", Value: "", MaxAge: 0})
+
+	// Compile regex to extract token parts cookies
+	cookieRegex, err := regexp.Compile("proxy_auth_token_.*")
+	if err != nil {
+		return fmt.Errorf("compiling proxy auth token regex: %s\n", err)
+	}
+
+	// List token parts cookies
+	for _, cookie := range r.Cookies() {
+		if cookieRegex.MatchString(cookie.Name) {
+			http.SetCookie(w, &http.Cookie{Name: cookie.Name, Value: "", MaxAge: 0})
+		}
+	}
+
+	return nil
 }
 
 // tokenExpired checks if JWT token is expired
