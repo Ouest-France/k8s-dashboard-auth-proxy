@@ -70,7 +70,7 @@ func deleteTokenCookie(w http.ResponseWriter, r *http.Request) error {
 	// List token parts cookies
 	for _, cookie := range r.Cookies() {
 		if cookieRegex.MatchString(cookie.Name) {
-			http.SetCookie(w, &http.Cookie{Name: cookie.Name, Value: "", MaxAge: 0})
+			http.SetCookie(w, &http.Cookie{Name: cookie.Name, Value: "", MaxAge: -1})
 		}
 	}
 
