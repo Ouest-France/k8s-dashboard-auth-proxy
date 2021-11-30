@@ -17,6 +17,7 @@ func Server(loginURL, guestClusterName, proxyURL string) error {
 	r.HandleFunc("/*", proxyHandler(proxyURL))
 	r.Get("/login", loginGetHandler)
 	r.Post("/login", loginPostHandler(loginURL, guestClusterName))
+	r.Get("/logout", logoutGetHandler)
 
 	// Serve requests
 	return http.ListenAndServe(":8080", r)
