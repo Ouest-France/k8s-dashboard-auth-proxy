@@ -12,9 +12,11 @@ func main() {
 
 	// Define and parse flags
 	var loginURL, guestClusterName, proxyURL string
+	var debug bool
 	flag.StringVar(&loginURL, "login-url", "", "WCP login URL")
 	flag.StringVar(&guestClusterName, "guest-cluster-name", "", "Tanzu guest cluster name")
 	flag.StringVar(&proxyURL, "proxy-url", "http://127.0.0.1:9090/", "Dashboard URL to proxy")
+	flag.BoolVar(&debug, "debug", false, "Debug mode")
 	flag.Parse()
 
 	// Check that loginURL and guestClusterName are set
@@ -24,7 +26,7 @@ func main() {
 	}
 
 	// Server requests
-	err := proxy.Server(loginURL, guestClusterName, proxyURL)
+	err := proxy.Server(loginURL, guestClusterName, proxyURL, debug)
 	if err != nil {
 		fmt.Printf("failed to start proxy: %s", err)
 		os.Exit(1)

@@ -21,12 +21,12 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v2
         with:
-          go-version: 1.16
+          go-version: 1.19
 
       - name: Run Golang CI Lint
-        uses: golangci/golangci-lint-action@v2
+        uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.33
+          version: latest
 
       - name: Build
         run: CGO_ENABLED=0 go build -ldflags="-extldflags '-static' -w -s" -o k8s-dashboard-auth-proxy
