@@ -1,25 +1,21 @@
 package proxy
 
 import (
-	"crypto/tls"
 	_ "embed" //embed web resources for login page
-	"encoding/json"
 	"fmt"
 	"html/template"
-	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
+
+	"github.com/Ouest-France/k8s-dashboard-auth-proxy/provider"
 )
 
 //go:embed embed/login.html.tmpl
 var loginPageTemplate string
 
-// TanzuAuthResult represents the JSON response from Tanzu Auth
-type TanzuAuthResult struct {
-	SessionID string `json:"session_id"`
-}
+//go:embed embed/role.html.tmpl
+var rolePageTemplate string
 
 // loginGetHandler displays the login form
 func loginGetHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,76 +43,117 @@ func loginGetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // loginPostHandler handles the Tanzu authentication logic
-func loginPostHandler(loginURL, guestClusterName string) func(w http.ResponseWriter, r *http.Request) {
+func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 
-		// Get user and password from posted form
-		username := r.FormValue("username")
-		password := r.FormValue("password")
+		// Switch on auth provider
+		switch authProvider := authProvider.(type) {
+		case *provider.ProviderAwsAdfs:
 
-		// Check that username and password are defined
-		if username == "" || password == "" {
-			log.Printf("username or password empty")
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password empty")), http.StatusFound)
-			return
+			switch r.FormValue("step") {
+			case "login":
+				adfsProvider := authProvider
+
+				// Check if username and password are provided
+				username := r.FormValue("username")
+				password := r.FormValue("password")
+
+				if username == "" || password == "" {
+					log.Printf("username or password not provided")
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password not provided")), http.StatusFound)
+					return
+				}
+
+				// Authenticate user
+				assertion, roles, err := adfsProvider.Login(username, password)
+				if err != nil {
+					log.Printf("failed to authenticate user: %s", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Authentication failed")), http.StatusFound)
+					return
+				}
+
+				// Parse role template
+				tmpl, err := template.New("role").Parse(rolePageTemplate)
+				if err != nil {
+					log.Printf("failed to parse role page template: %s", err)
+					return
+				}
+
+				// Execute template with role error if provided in URL
+				err = tmpl.ExecuteTemplate(w, "role", struct {
+					Assertion string
+					Roles     map[string]string
+				}{
+					Assertion: assertion,
+					Roles:     roles,
+				})
+				if err != nil {
+					log.Printf("failed to execute role page template: %s", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to execute role page template")), http.StatusFound)
+					return
+				}
+			case "role":
+				adfsProvider := authProvider
+
+				// Check if role is provided
+				role := r.FormValue("role")
+				if role == "" {
+					log.Printf("role not provided")
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Role not provided")), http.StatusFound)
+					return
+				}
+
+				// Check if assertion is provided
+				assertion := r.FormValue("assertion")
+				if assertion == "" {
+					log.Printf("assertion not provided")
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Assertion not provided")), http.StatusFound)
+					return
+				}
+
+				// Assume role with SAML assertion
+				token, err := adfsProvider.Token(assertion, role)
+				if err != nil {
+					log.Printf("failed to assume role: %s", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to assume role")), http.StatusFound)
+					return
+				}
+
+				// As stated by RFC, cookie size limit must be at least 4096 bytes
+				// so we split the token below this size to be compatible with all
+				// browsers https://stackoverflow.com/a/52492934
+				setTokenCookie(w, token, 4000)
+
+				http.Redirect(w, r, "/", http.StatusFound)
+			}
+
+		case *provider.ProviderTanzu:
+
+			// Check if username and password are provided
+			username := r.FormValue("username")
+			password := r.FormValue("password")
+
+			if username == "" || password == "" {
+				log.Printf("username or password not provided")
+				http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password not provided")), http.StatusFound)
+				return
+			}
+
+			// Authenticate user
+			tanzuProvider := authProvider
+			token, err := tanzuProvider.Login(username, password)
+			if err != nil {
+				log.Printf("failed to authenticate user: %s", err)
+				http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Authentication failed")), http.StatusFound)
+				return
+			}
+
+			// As stated by RFC, cookie size limit must be at least 4096 bytes
+			// so we split the token below this size to be compatible with all
+			// browsers https://stackoverflow.com/a/52492934
+			setTokenCookie(w, token, 4000)
+
+			http.Redirect(w, r, "/", http.StatusFound)
 		}
-
-		// Create HTTP client for auth request
-		client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
-
-		// Create JSON payload
-		payload := fmt.Sprintf("{\"guest_cluster_name\":\"%s\"}", guestClusterName)
-
-		// Create login request
-		req, err := http.NewRequest("POST", loginURL, strings.NewReader(payload))
-		if err != nil {
-			log.Printf("creating login request: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), http.StatusFound)
-			return
-		}
-
-		// Add JSON content type
-		req.Header.Add("Content-Type", "application/json")
-
-		// Add username and password as basicauth
-		req.SetBasicAuth(username, password)
-
-		// Send login request
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Printf("login request failed: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), http.StatusFound)
-			return
-		}
-		defer resp.Body.Close()
-
-		// Check HTTP code for login succeeded
-		if resp.StatusCode != 200 {
-			log.Printf("login failed with non 200 http code for login response body: %d", resp.StatusCode)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Invalid credentials")), http.StatusFound)
-			return
-		}
-
-		// Read JSON response
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			log.Printf("failed to read login response body: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), http.StatusFound)
-			return
-		}
-		var TanzuAuthResult TanzuAuthResult
-		err = json.Unmarshal(body, &TanzuAuthResult)
-		if err != nil {
-			log.Printf("failed to unmarshal json login response: %s", err)
-			http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Server error")), http.StatusFound)
-			return
-		}
-
-		// As stated by RFC, cookie size limit must be at least 4096 bytes
-		// so we split the token below this size to be compatible with all
-		// browsers https://stackoverflow.com/a/52492934
-		setTokenCookie(w, TanzuAuthResult.SessionID, 4000)
-
-		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }

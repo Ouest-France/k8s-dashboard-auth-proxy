@@ -5,28 +5,49 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Ouest-France/k8s-dashboard-auth-proxy/provider"
 	"github.com/Ouest-France/k8s-dashboard-auth-proxy/proxy"
 )
 
 func main() {
-
 	// Define and parse flags
-	var loginURL, guestClusterName, proxyURL string
-	var debug bool
-	flag.StringVar(&loginURL, "login-url", "", "WCP login URL")
-	flag.StringVar(&guestClusterName, "guest-cluster-name", "", "Tanzu guest cluster name")
-	flag.StringVar(&proxyURL, "proxy-url", "http://127.0.0.1:9090/", "Dashboard URL to proxy")
-	flag.BoolVar(&debug, "debug", false, "Debug mode")
+	auth := flag.String("auth", "aws-adfs", "Authentication provider (aws-adfs, tanzu)")
+	loginURL := flag.String("login-url", "", "ADFS or Tanzu login URL")
+	dashboardURL := flag.String("dashboard-url", "http://127.0.0.1:9090/", "Dashboard URL to proxy")
+	clusterID := flag.String("cluster-id", "", "Kubernetes cluster ID (only for AWS-ADFS)")
+	tanzuGuestCluster := flag.String("tanzu-guest-cluster", "", "Tanzu guest cluster name (only for Tanzu)")
+	debug := flag.Bool("debug", false, "Debug mode")
 	flag.Parse()
 
-	// Check that loginURL and guestClusterName are set
-	if loginURL == "" || guestClusterName == "" {
-		fmt.Println("-login-url and -guest-cluster-name flags must be defined")
+	// Check that loginURL
+	if *loginURL == "" {
+		fmt.Println("Login URL must be set")
+		os.Exit(1)
+	}
+
+	// Create provider
+	var authProvider provider.Provider
+	var err error
+	switch *auth {
+	case "aws-adfs":
+		authProvider, err = provider.NewProviderAwsAdfs(*loginURL, *clusterID)
+		if err != nil {
+			fmt.Printf("Failed to create AWS-ADFS provider: %s\n", err)
+			os.Exit(1)
+		}
+	case "tanzu":
+		authProvider, err = provider.NewProviderTanzu(*loginURL, *tanzuGuestCluster)
+		if err != nil {
+			fmt.Printf("Failed to create Tanzu provider: %s\n", err)
+			os.Exit(1)
+		}
+	default:
+		fmt.Println("Auth provider must be 'adfs' or 'tanzu'")
 		os.Exit(1)
 	}
 
 	// Server requests
-	err := proxy.Server(loginURL, guestClusterName, proxyURL, debug)
+	err = proxy.Server(*dashboardURL, authProvider, *debug)
 	if err != nil {
 		fmt.Printf("failed to start proxy: %s", err)
 		os.Exit(1)

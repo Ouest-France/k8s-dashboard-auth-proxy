@@ -25,3 +25,5 @@
 
 # End of https://www.toptal.com/developers/gitignore/api/go
 k8s-dashboard-auth-proxy
+kubeconfig
+.vscode
