@@ -47,12 +47,12 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		// Switch on auth provider
-		switch authProvider.(type) {
+		switch authProvider := authProvider.(type) {
 		case *provider.ProviderAwsAdfs:
 
 			switch r.FormValue("step") {
 			case "login":
-				adfsProvider := authProvider.(*provider.ProviderAwsAdfs)
+				adfsProvider := authProvider
 
 				// Check if username and password are provided
 				username := r.FormValue("username")
@@ -93,7 +93,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 					return
 				}
 			case "role":
-				adfsProvider := authProvider.(*provider.ProviderAwsAdfs)
+				adfsProvider := authProvider
 
 				// Check if role is provided
 				role := r.FormValue("role")
@@ -140,7 +140,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 			}
 
 			// Authenticate user
-			tanzuProvider := authProvider.(*provider.ProviderTanzu)
+			tanzuProvider := authProvider
 			token, err := tanzuProvider.Login(username, password)
 			if err != nil {
 				log.Printf("failed to authenticate user: %s", err)
