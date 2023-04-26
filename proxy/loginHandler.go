@@ -17,11 +17,6 @@ var loginPageTemplate string
 //go:embed embed/role.html.tmpl
 var rolePageTemplate string
 
-// TanzuAuthResult represents the JSON response from Tanzu Auth
-type TanzuAuthResult struct {
-	SessionID string `json:"session_id"`
-}
-
 // loginGetHandler displays the login form
 func loginGetHandler(w http.ResponseWriter, r *http.Request) {
 
