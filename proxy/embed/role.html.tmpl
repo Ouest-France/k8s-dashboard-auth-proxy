@@ -10,18 +10,16 @@
             Kubernetes Dashboard
         </div>
         <div style="background-color: #ffffff; padding: 10px 15px 10px 15px;">
-            {{if .}}<div style="margin-top: 20px; color: #ff0000; font-weight: bold;">{{.}}</div>{{end}}
             <form action="/login" method="POST">
-                <input type="hidden" name="step" value="login">
+                <input type="hidden" name="step" value="role">
+                <input type="hidden" name="assertion" value="{{.Assertion}}">
                 <div style="margin-top: 20px;">
-                    <label>Username</label>
-                    <input name="username" id="username" autocomplete="username"
-                        style="width: 200px; border-style: solid; border-radius: 5px;">
-                </div>
-                <div style="margin-top: 20px;">
-                    <label>Password</label>
-                    <input name="password" id="password" autocomplete="current-password" type="password"
-                        style="width: 200px; border-style: solid; border-radius: 5px;">
+                    <label>Role</label>
+                    <select name="role" style="width: 100%; padding: 10px; border-radius: 5px;">
+                    {{range $key, $value := .Roles}}
+                    <option value="{{$value}}">{{$key}}</option>
+                    {{end}}
+                    </select>
                 </div>
                 <div style="margin-top: 20px;">
                     <button

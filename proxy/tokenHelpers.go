@@ -1,15 +1,11 @@
 package proxy
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
 	"strconv"
-	"strings"
-	"time"
 )
 
 // JWTPayload represents tha payload part of the JWT token
@@ -75,32 +71,6 @@ func deleteTokenCookie(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	return nil
-}
-
-// tokenExpired checks if JWT token is expired
-func tokenExpired(rawToken string) (bool, error) {
-	// Split Header/Payload/Signature parts of JWT token
-	jwtTokenSlice := strings.Split(rawToken, ".")
-	if len(jwtTokenSlice) != 3 {
-		return false, fmt.Errorf("JWT token is in %d parts but must be in 3 parts", len(jwtTokenSlice))
-	}
-	jwtPayloadJSONBase64 := jwtTokenSlice[1]
-
-	// Decode Base64 encoded payload part
-	jwtPayloadJSON, err := base64.StdEncoding.WithPadding(base64.NoPadding).DecodeString(jwtPayloadJSONBase64)
-	if err != nil {
-		return false, fmt.Errorf("failed to decode token base64 payload: %s", err)
-	}
-
-	// Decode JSON payload
-	var jwtPayload JWTPayload
-	err = json.Unmarshal([]byte(jwtPayloadJSON), &jwtPayload)
-	if err != nil {
-		return false, fmt.Errorf("failed to unmarshald token json payload: %s", err)
-	}
-
-	// Return true if current timestamp is after JWT expire timestamp
-	return time.Now().After(time.Unix(jwtPayload.Exp, 0)), nil
 }
 
 // splitToken splits a token by size

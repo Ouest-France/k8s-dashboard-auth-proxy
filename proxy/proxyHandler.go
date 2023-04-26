@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+
+	"github.com/Ouest-France/k8s-dashboard-auth-proxy/provider"
 )
 
-func proxyHandler(target string) func(w http.ResponseWriter, r *http.Request) {
+func proxyHandler(target string, authProvider provider.Provider) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		// get token or redirect to login
@@ -19,15 +21,10 @@ func proxyHandler(target string) func(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Check if token expired
-		expired, err := tokenExpired(token)
+		// Check if token is valid
+		err = authProvider.Valid(token)
 		if err != nil {
-			log.Printf("failed to check if token expired: %s", err)
-			http.Redirect(w, r, "/login", http.StatusFound)
-			return
-		}
-		if expired {
-			log.Printf("token expired")
+			log.Printf("failed to check if token is valid: %s", err)
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
