@@ -2,6 +2,8 @@ package proxy
 
 import (
 	_ "embed" //embed web resources for login page
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -112,10 +114,28 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 				}
 
 				// Assume role with SAML assertion
-				token, err := adfsProvider.Token(assertion, role)
+				creds, err := adfsProvider.AssumeRole(assertion, role)
 				if err != nil {
 					log.Printf("failed to assume role: %s", err)
 					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to assume role")), http.StatusFound)
+					return
+				}
+
+				// Marshal credentials to base64 encoded JSON and store them in proxy_aws_creds cookie
+				jsonCreds, err := json.Marshal(creds)
+				if err != nil {
+					log.Printf("failed to marshal credentials: %s", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to marshal credentials")), http.StatusFound)
+					return
+				}
+				b64JsonCreds := base64.StdEncoding.EncodeToString(jsonCreds)
+				http.SetCookie(w, &http.Cookie{Name: "proxy_aws_creds", Value: b64JsonCreds})
+
+				// Get token from credentials
+				token, err := adfsProvider.Token(creds)
+				if err != nil {
+					log.Printf("failed to get token: %s", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to get token")), http.StatusFound)
 					return
 				}
 
