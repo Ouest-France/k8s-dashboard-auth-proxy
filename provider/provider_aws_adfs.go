@@ -30,6 +30,15 @@ type AWSRole struct {
 	Principal string `json:"principal"`
 }
 
+type AWSCreds struct {
+	AccessKey     string    `json:"accesskey"`
+	SecretKey     string    `json:"secretkey"`
+	SessionToken  string    `json:"sessiontoken"`
+	SecurityToken string    `json:"securitytoken"`
+	Principal     string    `json:"principal"`
+	Expires       time.Time `json:"expires"`
+}
+
 func NewProviderAwsAdfs(loginURL string, clusterID string) (*ProviderAwsAdfs, error) {
 
 	// Check if login URL is valid
@@ -129,26 +138,26 @@ func (p *ProviderAwsAdfs) Login(user, password string) (string, map[string]strin
 	return samlAssertion, roles, nil
 }
 
-// Token returns a Kubernetes token based on SAML assertion and role
-func (p *ProviderAwsAdfs) Token(SAMLAssertion, role string) (string, error) {
+// AssumeRole will take a SAML assertion and role and return AWS credentials
+func (p *ProviderAwsAdfs) AssumeRole(SAMLAssertion, role string) (AWSCreds, error) {
 
 	// Decode base64 role
 	decodedRole, err := base64.StdEncoding.DecodeString(role)
 	if err != nil {
-		return "", fmt.Errorf("error decoding role: %w", err)
+		return AWSCreds{}, fmt.Errorf("error decoding role: %w", err)
 	}
 
 	// Unmarshal the role
 	var awsRole AWSRole
 	err = json.Unmarshal(decodedRole, &awsRole)
 	if err != nil {
-		return "", fmt.Errorf("error unmarshalling role: %w", err)
+		return AWSCreds{}, fmt.Errorf("error unmarshalling role: %w", err)
 	}
 
 	// Create a new STS session
 	sess, err := session.NewSession(&aws.Config{})
 	if err != nil {
-		return "", fmt.Errorf("error creating aws session: %w", err)
+		return AWSCreds{}, fmt.Errorf("error creating aws session: %w", err)
 	}
 	svc := sts.New(sess)
 
@@ -161,25 +170,42 @@ func (p *ProviderAwsAdfs) Token(SAMLAssertion, role string) (string, error) {
 	}
 	resp, err := svc.AssumeRoleWithSAML(assumeInput)
 	if err != nil {
-		return "", fmt.Errorf("assuming role failed: %w", err)
+		return AWSCreds{}, fmt.Errorf("assuming role failed: %w", err)
 	}
+
+	creds := AWSCreds{
+		AccessKey:     aws.StringValue(resp.Credentials.AccessKeyId),
+		SecretKey:     aws.StringValue(resp.Credentials.SecretAccessKey),
+		SessionToken:  aws.StringValue(resp.Credentials.SessionToken),
+		SecurityToken: aws.StringValue(resp.Credentials.SessionToken),
+		Principal:     aws.StringValue(resp.AssumedRoleUser.Arn),
+		Expires:       resp.Credentials.Expiration.Local(),
+	}
+
+	return creds, nil
+}
+
+// Token returns a Kubernetes token based on temporary AWS credentials
+func (p *ProviderAwsAdfs) Token(tmpCreds AWSCreds) (string, error) {
+
+	// Set temporary credentials
 	creds := &awsconfig.AWSCredentials{
-		AWSAccessKey:     aws.StringValue(resp.Credentials.AccessKeyId),
-		AWSSecretKey:     aws.StringValue(resp.Credentials.SecretAccessKey),
-		AWSSessionToken:  aws.StringValue(resp.Credentials.SessionToken),
-		AWSSecurityToken: aws.StringValue(resp.Credentials.SessionToken),
-		PrincipalARN:     aws.StringValue(resp.AssumedRoleUser.Arn),
-		Expires:          resp.Credentials.Expiration.Local(),
+		AWSAccessKey:     tmpCreds.AccessKey,
+		AWSSecretKey:     tmpCreds.SecretKey,
+		AWSSessionToken:  tmpCreds.SessionToken,
+		AWSSecurityToken: tmpCreds.SecurityToken,
+		PrincipalARN:     tmpCreds.Principal,
+		Expires:          tmpCreds.Expires,
 	}
 
 	// Create a new AWS STS session with the temporary credentials
-	sess, err = session.NewSession(&aws.Config{
+	sess, err := session.NewSession(&aws.Config{
 		Credentials: credentials.NewStaticCredentials(creds.AWSAccessKey, creds.AWSSecretKey, creds.AWSSessionToken),
 	})
 	if err != nil {
 		return "", fmt.Errorf("error creating session: %w", err)
 	}
-	svc = sts.New(sess)
+	svc := sts.New(sess)
 
 	// Generate Kubernetes token with the STS session
 	// it generates a token with a presigned URL to the STS session
