@@ -24,11 +24,13 @@ func Server(proxyURL string, authProvider provider.Provider, debug bool) error {
 
 	// Add routes
 	r.HandleFunc("/*", proxyHandler(proxyURL, authProvider))
-	r.Get("/login", loginGetHandler)
+	r.Get("/login", loginGetHandler(authProvider))
 	r.Post("/login", loginPostHandler(authProvider))
 	r.Get("/logout", logoutGetHandler)
 
+	//
+
 	// Serve requests
-	log.Printf("starting server on port http://0.0.0.0:8080")
-	return http.ListenAndServe(":8080", r)
+	log.Printf("starting server on port https://0.0.0.0:8080")
+	return http.ListenAndServeTLS(":8080", "localhost.crt", "localhost.key", r)
 }

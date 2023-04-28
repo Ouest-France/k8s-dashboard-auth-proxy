@@ -1,0 +1,19 @@
+<html>
+
+<head>
+    <title>Kubernetes login</title>
+</head>
+
+<body style="margin: 0px; background-color: #edeff0;">
+    <div style="margin-left: auto; margin-right: auto; width: 800px;">
+        <div style="background-color: #326de6; color: #ffffff; padding: 15px; font-weight: bold; font-size: x-large;">
+            Kubernetes Dashboard
+        </div>
+        <div style="background-color: #ffffff; padding: 10px 15px 10px 15px;">
+            {{if .}}<div style="margin-top: 20px; color: #ff0000; font-weight: bold;">{{.}}</div>{{end}}
+            <div><br><a href="/login">Retry login</a></div>
+        </div>
+    </div>
+</body>
+
+</html>

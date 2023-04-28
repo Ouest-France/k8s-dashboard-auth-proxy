@@ -12,7 +12,7 @@ import (
 func main() {
 	// Define and parse flags
 	auth := flag.String("auth", "aws-adfs", "Authentication provider (aws-adfs, tanzu)")
-	loginURL := flag.String("login-url", "", "ADFS or Tanzu login URL")
+	loginURL := flag.String("login-url", "", "ADFS metadata URL or Tanzu login URL")
 	dashboardURL := flag.String("dashboard-url", "http://127.0.0.1:9090/", "Dashboard URL to proxy")
 	clusterID := flag.String("cluster-id", "", "Kubernetes cluster ID (only for AWS-ADFS)")
 	tanzuGuestCluster := flag.String("tanzu-guest-cluster", "", "Tanzu guest cluster name (only for Tanzu)")

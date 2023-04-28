@@ -1,9 +1,17 @@
 package provider
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
+	"io/ioutil"
+	"math/big"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -13,15 +21,18 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/beevik/etree"
+	saml2 "github.com/russellhaering/gosaml2"
+	"github.com/russellhaering/gosaml2/types"
+	dsig "github.com/russellhaering/goxmldsig"
 	"github.com/versent/saml2aws"
-	"github.com/versent/saml2aws/pkg/cfg"
-	"github.com/versent/saml2aws/pkg/creds"
 	"sigs.k8s.io/aws-iam-authenticator/pkg/token"
 )
 
 type ProviderAwsAdfs struct {
-	LoginURL  string
-	ClusterID string
+	MetadataURL     string
+	ClusterID       string
+	ServiceProvider *saml2.SAMLServiceProvider
 }
 
 type AWSRole struct {
@@ -39,58 +50,147 @@ type AWSCreds struct {
 	Expires       time.Time `json:"expires"`
 }
 
-func NewProviderAwsAdfs(loginURL string, clusterID string) (*ProviderAwsAdfs, error) {
+type SigningKeyStore struct {
+	privateKey *rsa.PrivateKey
+	cert       []byte
+}
+
+func (ks SigningKeyStore) GetKeyPair() (*rsa.PrivateKey, []byte, error) {
+	return ks.privateKey, ks.cert, nil
+}
+
+func NewProviderAwsAdfs(metadataURL string, clusterID string) (*ProviderAwsAdfs, error) {
 
 	// Check if login URL is valid
-	if loginURL == "" {
-		return nil, fmt.Errorf("login URL must be set")
+	if metadataURL == "" {
+		return nil, fmt.Errorf("metadata URL must be set")
 	}
-	_, err := url.ParseRequestURI(loginURL)
+	_, err := url.ParseRequestURI(metadataURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid login URL: %w", err)
+		return nil, fmt.Errorf("invalid metadata URL: %w", err)
+	}
+
+	// Download metadata
+	res, err := http.Get(metadataURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch IDP metadata: %w", err)
+	}
+	rawMetadata, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read IDP metadata: %w", err)
+	}
+
+	// Unmarshal metadata XML
+	metadata := &types.EntityDescriptor{}
+	err = xml.Unmarshal(rawMetadata, metadata)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshald XML metadata: %s", err)
+	}
+
+	// Parse IDP certs from XML
+	certStore := dsig.MemoryX509CertificateStore{
+		Roots: []*x509.Certificate{},
+	}
+	for _, kd := range metadata.IDPSSODescriptor.KeyDescriptors {
+		for idx, xcert := range kd.KeyInfo.X509Data.X509Certificates {
+			if xcert.Data == "" {
+				panic(fmt.Errorf("metadata certificate(%d) must not be empty", idx))
+			}
+			certData, err := base64.StdEncoding.DecodeString(xcert.Data)
+			if err != nil {
+				return nil, fmt.Errorf("decoding IDP base64 cert data: %s", err)
+			}
+
+			idpCert, err := x509.ParseCertificate(certData)
+			if err != nil {
+				return nil, fmt.Errorf("parsing IDP cert: %s", err)
+			}
+
+			certStore.Roots = append(certStore.Roots, idpCert)
+		}
+	}
+
+	// Generate rsa private key
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, fmt.Errorf("generating keystore private key: %s", err)
+	}
+
+	// Create certificate
+	now := time.Now()
+
+	template := &x509.Certificate{
+		Subject: pkix.Name{
+			CommonName: "urn:amazon:webservices",
+		},
+		SerialNumber: big.NewInt(0),
+		NotBefore:    now.Add(-5 * time.Minute),
+		NotAfter:     now.Add(365 * 24 * time.Hour),
+
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{},
+		BasicConstraintsValid: true,
+	}
+
+	cert, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		return nil, fmt.Errorf("creating keystore certificate: %s", err)
+	}
+
+	ks := SigningKeyStore{privateKey: key, cert: cert}
+
+	// Create new SAML service provider
+	sp := saml2.SAMLServiceProvider{
+		IdentityProviderSSOURL:         metadata.IDPSSODescriptor.SingleSignOnServices[0].Location,
+		IdentityProviderSLOURL:         metadata.IDPSSODescriptor.SingleLogoutServices[0].Location,
+		IdentityProviderIssuer:         metadata.EntityID,
+		ServiceProviderIssuer:          "urn:amazon:webservices",
+		AssertionConsumerServiceURL:    "https://127.0.0.1:8080/login?step=saml",
+		ServiceProviderSLOURL:          "https://127.0.0.1:8080/login?step=saml",
+		SignAuthnRequests:              false,
+		SignAuthnRequestsCanonicalizer: dsig.MakeC14N10ExclusiveCanonicalizerWithPrefixList(dsig.DefaultPrefix),
+		SignAuthnRequestsAlgorithm:     "hhttp://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+		AudienceURI:                    "urn:amazon:webservices",
+		IDPCertificateStore:            &certStore,
+		SPKeyStore:                     ks,
+		AllowMissingAttributes:         true,
+	}
+
+	sp.RequestedAuthnContext = &saml2.RequestedAuthnContext{
+		Comparison: "minimum",
+		Contexts:   []string{"urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport"},
 	}
 
 	return &ProviderAwsAdfs{
-		LoginURL:  loginURL,
-		ClusterID: clusterID,
+		MetadataURL:     metadataURL,
+		ClusterID:       clusterID,
+		ServiceProvider: &sp,
 	}, nil
 }
 
 // Login is used to do SAML authentication to ADFS
-// use the SAML assertion to assume an AWS role
-// and return a Kubernetes token
-func (p *ProviderAwsAdfs) Login(user, password string) (string, map[string]string, error) {
+func (p *ProviderAwsAdfs) Login() (string, error) {
 
-	// Create a new SAML idp account to use with saml2aws
-	account := cfg.NewIDPAccount()
-	account.URL = p.LoginURL
-	account.Username = user
-	account.Provider = "ADFS"
-	account.MFA = "Auto"
-	account.AmazonWebservicesURN = "urn:amazon:webservices"
-	account.SessionDuration = 36000
-
-	// Create a new SAML client
-	client, err := saml2aws.NewSAMLClient(account)
+	// Generate SAML auth URL
+	var doc *etree.Document
+	doc, err := p.ServiceProvider.BuildAuthRequestDocument()
 	if err != nil {
-		return "", map[string]string{}, fmt.Errorf("error building saml client: %w", err)
+		return "", fmt.Errorf("building auth request document: %w", err)
 	}
 
-	// Create a new login details object
-	login := &creds.LoginDetails{
-		Username: account.Username,
-		Password: password,
-		URL:      p.LoginURL,
-	}
-
-	// Authenticate to the ADFS and get the SAML assertion with roles
-	samlAssertion, err := client.Authenticate(login)
+	authURL, err := p.ServiceProvider.BuildAuthURLRedirect(p.ServiceProvider.AssertionConsumerServiceURL, doc)
 	if err != nil {
-		return "", map[string]string{}, fmt.Errorf("error authenticating to IdP: %w", err)
+		return "", fmt.Errorf("building auth redirect URL: %w", err)
 	}
+
+	return authURL, nil
+}
+
+// SAML is used to check SAML response and extract roles
+func (p *ProviderAwsAdfs) SAML(samlResponse string) (string, map[string]string, error) {
 
 	// Decode the SAML assertion and extract the roles
-	decodedSamlAssertion, err := base64.StdEncoding.DecodeString(samlAssertion)
+	decodedSamlAssertion, err := base64.StdEncoding.DecodeString(samlResponse)
 	if err != nil {
 		return "", map[string]string{}, fmt.Errorf("error decoding saml assertion: %w", err)
 	}
@@ -135,7 +235,7 @@ func (p *ProviderAwsAdfs) Login(user, password string) (string, map[string]strin
 		roles[awsRole.Name] = b64Role
 	}
 
-	return samlAssertion, roles, nil
+	return samlResponse, roles, nil
 }
 
 // AssumeRole will take a SAML assertion and role and return AWS credentials

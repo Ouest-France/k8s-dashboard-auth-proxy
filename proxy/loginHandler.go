@@ -16,31 +16,77 @@ import (
 //go:embed embed/login.html.tmpl
 var loginPageTemplate string
 
+//go:embed embed/login_error.html.tmpl
+var loginErrorPageTemplate string
+
 //go:embed embed/role.html.tmpl
 var rolePageTemplate string
 
 // loginGetHandler displays the login form
-func loginGetHandler(w http.ResponseWriter, r *http.Request) {
+func loginGetHandler(authProvider provider.Provider) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 
-	// Retrieve login error message from URL
-	var loginErrorMessage string
-	queryLoginError, ok := r.URL.Query()["error"]
-	if ok && len(queryLoginError) == 1 {
-		loginErrorMessage = queryLoginError[0]
-	}
+		// Switch on auth provider
+		switch authProvider := authProvider.(type) {
+		case *provider.ProviderAwsAdfs:
 
-	// Parse login template
-	tmpl, err := template.New("login").Parse(loginPageTemplate)
-	if err != nil {
-		log.Printf("failed to parse login page template: %s", err)
-		return
-	}
+			// Retrieve login error message from URL
+			var loginErrorMessage string
+			queryLoginError, ok := r.URL.Query()["error"]
+			if ok && len(queryLoginError) == 1 {
+				loginErrorMessage = queryLoginError[0]
+			}
+			if loginErrorMessage != "" {
+				// Parse login template
+				tmpl, err := template.New("login_error").Parse(loginErrorPageTemplate)
+				if err != nil {
+					log.Printf("failed to parse login_error page template: %s", err)
+					return
+				}
 
-	// Execute template with login error if provided in URL
-	err = tmpl.ExecuteTemplate(w, "login", loginErrorMessage)
-	if err != nil {
-		log.Printf("failed to execute login page template: %s", err)
-		return
+				// Execute template with login error if provided in URL
+				err = tmpl.ExecuteTemplate(w, "login_error", loginErrorMessage)
+				if err != nil {
+					log.Printf("failed to execute login_error page template: %s", err)
+					return
+				}
+
+				return
+			}
+
+			// Create SAML request
+			samlURL, err := authProvider.Login()
+			if err != nil {
+				log.Printf("failed to create SAML request: %s", err)
+				return
+			}
+
+			// Redirect to SAML provider
+			http.Redirect(w, r, samlURL, http.StatusFound)
+
+		case *provider.ProviderTanzu:
+
+			// Retrieve login error message from URL
+			var loginErrorMessage string
+			queryLoginError, ok := r.URL.Query()["error"]
+			if ok && len(queryLoginError) == 1 {
+				loginErrorMessage = queryLoginError[0]
+			}
+
+			// Parse login template
+			tmpl, err := template.New("login").Parse(loginPageTemplate)
+			if err != nil {
+				log.Printf("failed to parse login page template: %s", err)
+				return
+			}
+
+			// Execute template with login error if provided in URL
+			err = tmpl.ExecuteTemplate(w, "login", loginErrorMessage)
+			if err != nil {
+				log.Printf("failed to execute login page template: %s", err)
+				return
+			}
+		}
 	}
 }
 
@@ -52,24 +98,29 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 		switch authProvider := authProvider.(type) {
 		case *provider.ProviderAwsAdfs:
 
-			switch r.FormValue("step") {
-			case "login":
-				adfsProvider := authProvider
+			// Get step as URL parameter
+			params, err := url.ParseQuery(r.URL.RawQuery)
+			if err != nil {
+				log.Printf("failed to parse query: %s", err)
+				http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to parse query")), http.StatusFound)
+				return
+			}
 
-				// Check if username and password are provided
-				username := r.FormValue("username")
-				password := r.FormValue("password")
+			switch params.Get("step") {
+			case "saml":
 
-				if username == "" || password == "" {
-					log.Printf("username or password not provided")
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password not provided")), http.StatusFound)
+				// Check if SAML response is provided
+				samlResponse := r.FormValue("SAMLResponse")
+				if samlResponse == "" {
+					log.Printf("SAML response not provided")
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("SAML response not provided")), http.StatusFound)
 					return
 				}
 
-				// Authenticate user
-				assertion, roles, err := adfsProvider.Login(username, password)
+				// Process SAML response
+				samlResponse, roles, err := authProvider.SAML(samlResponse)
 				if err != nil {
-					log.Printf("failed to authenticate user: %s", err)
+					log.Printf("failed to process SAML response: %s", err)
 					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Authentication failed")), http.StatusFound)
 					return
 				}
@@ -78,6 +129,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 				tmpl, err := template.New("role").Parse(rolePageTemplate)
 				if err != nil {
 					log.Printf("failed to parse role page template: %s", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to parse role page template")), http.StatusFound)
 					return
 				}
 
@@ -86,7 +138,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 					Assertion string
 					Roles     map[string]string
 				}{
-					Assertion: assertion,
+					Assertion: samlResponse,
 					Roles:     roles,
 				})
 				if err != nil {
@@ -95,7 +147,6 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 					return
 				}
 			case "role":
-				adfsProvider := authProvider
 
 				// Check if role is provided
 				role := r.FormValue("role")
@@ -114,7 +165,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 				}
 
 				// Assume role with SAML assertion
-				creds, err := adfsProvider.AssumeRole(assertion, role)
+				creds, err := authProvider.AssumeRole(assertion, role)
 				if err != nil {
 					log.Printf("failed to assume role: %s", err)
 					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to assume role")), http.StatusFound)
@@ -132,7 +183,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 				http.SetCookie(w, &http.Cookie{Name: "proxy_aws_creds", Value: b64JsonCreds})
 
 				// Get token from credentials
-				token, err := adfsProvider.Token(creds)
+				token, err := authProvider.Token(creds)
 				if err != nil {
 					log.Printf("failed to get token: %s", err)
 					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to get token")), http.StatusFound)
@@ -145,6 +196,11 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 				setTokenCookie(w, token, 4000)
 
 				http.Redirect(w, r, "/", http.StatusFound)
+			default:
+
+				log.Printf("step not provided")
+				http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Step not provided")), http.StatusFound)
+				return
 			}
 
 		case *provider.ProviderTanzu:
