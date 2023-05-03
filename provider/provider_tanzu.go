@@ -56,10 +56,18 @@ func (p *ProviderTanzu) Login(user, password string) (string, error) {
 	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
 
 	// Create JSON payload
-	payload := fmt.Sprintf("{\"guest_cluster_name\":\"%s\"}", p.GuestCluster)
+	payloadStruct := struct {
+		GuestClusterName string `json:"guest_cluster_name"`
+	}{
+		GuestClusterName: p.GuestCluster,
+	}
+	payload, err := json.Marshal(payloadStruct)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal payload: %w", err)
+	}
 
 	// Create login request
-	req, err := http.NewRequest("POST", p.LoginURL, strings.NewReader(payload))
+	req, err := http.NewRequest("POST", p.LoginURL, strings.NewReader(string(payload)))
 	if err != nil {
 		return "", fmt.Errorf("failed to create login request: %w", err)
 	}
@@ -78,7 +86,7 @@ func (p *ProviderTanzu) Login(user, password string) (string, error) {
 	defer resp.Body.Close()
 
 	// Check HTTP code for login succeeded
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("login failed with HTTP code %d", resp.StatusCode)
 	}
 

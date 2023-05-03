@@ -12,7 +12,7 @@ func logoutGetHandler(w http.ResponseWriter, r *http.Request) {
 	// Call token cookie deletion helper
 	err := deleteTokenCookie(w, r)
 	if err != nil {
-		fmt.Printf("deleting token cookie: %s\n", err)
+		fmt.Printf("deleting token cookie: %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}

@@ -5,19 +5,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/Versent/saml2aws/pkg/awsconfig"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
 	"github.com/versent/saml2aws"
+	"github.com/versent/saml2aws/pkg/awsconfig"
 	"github.com/versent/saml2aws/pkg/cfg"
 	"github.com/versent/saml2aws/pkg/creds"
 	"sigs.k8s.io/aws-iam-authenticator/pkg/token"
 )
+
+const SessionDuration = 3600
 
 type ProviderAwsAdfs struct {
 	LoginURL  string
@@ -68,7 +71,7 @@ func (p *ProviderAwsAdfs) Login(user, password string) (string, map[string]strin
 	account.Provider = "ADFS"
 	account.MFA = "Auto"
 	account.AmazonWebservicesURN = "urn:amazon:webservices"
-	account.SessionDuration = 36000
+	account.SessionDuration = SessionDuration
 
 	// Create a new SAML client
 	client, err := saml2aws.NewSAMLClient(account)
@@ -108,16 +111,15 @@ func (p *ProviderAwsAdfs) Login(user, password string) (string, map[string]strin
 
 		// Extract account ID from role ARN
 		// Example: arn:aws:iam::123456789012:role/role-name
-		if len(strings.Split(role.RoleARN, ":")) != 6 {
-			return "", map[string]string{}, fmt.Errorf("invalid role ARN: %s", role.RoleARN)
-		}
+		re := regexp.MustCompile(`^arn:aws:iam::(\d+):role\/([\w+=,.@-]{1,64})$`)
+		match := re.FindSubmatch([]byte(role.RoleARN))
 
-		if len(strings.Split(role.RoleARN, "/")) != 2 {
+		if len(match) != 3 {
 			return "", map[string]string{}, fmt.Errorf("invalid role ARN: %s", role.RoleARN)
 		}
 
 		awsRole := AWSRole{
-			Name:      fmt.Sprintf("%s:%s", strings.Split(role.RoleARN, ":")[4], strings.Split(role.RoleARN, "/")[1]),
+			Name:      fmt.Sprintf("%s:%s", match[1], match[2]),
 			ARN:       role.RoleARN,
 			Principal: role.PrincipalARN,
 		}
@@ -128,9 +130,6 @@ func (p *ProviderAwsAdfs) Login(user, password string) (string, map[string]strin
 		}
 
 		b64Role := base64.StdEncoding.EncodeToString(jsonRole)
-		if err != nil {
-			return "", map[string]string{}, fmt.Errorf("error encoding role: %w", err)
-		}
 
 		roles[awsRole.Name] = b64Role
 	}
@@ -166,7 +165,7 @@ func (p *ProviderAwsAdfs) AssumeRole(SAMLAssertion, role string) (AWSCreds, erro
 		PrincipalArn:    aws.String(awsRole.Principal),
 		RoleArn:         aws.String(awsRole.ARN),
 		SAMLAssertion:   aws.String(SAMLAssertion),
-		DurationSeconds: aws.Int64(int64(36000)),
+		DurationSeconds: aws.Int64(SessionDuration),
 	}
 	resp, err := svc.AssumeRoleWithSAML(assumeInput)
 	if err != nil {

@@ -18,7 +18,7 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 		// get token or redirect to login
 		token, err := getTokenCookie(r)
 		if err != nil {
-			log.Printf("failed to get cookie: %s", err)
+			log.Printf("failed to get cookie: %v", err)
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
@@ -36,7 +36,7 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			// Get cookier proxy_aws_creds
 			b64Creds, err := r.Cookie("proxy_aws_creds")
 			if err != nil || b64Creds.Value == "" {
-				log.Printf("failed to get cookie proxy_aws_creds: %s", err)
+				log.Printf("failed to get cookie proxy_aws_creds: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
 			}
@@ -44,14 +44,14 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			// Extract creds from cookie
 			decodedCreds, err := base64.StdEncoding.DecodeString(b64Creds.Value)
 			if err != nil {
-				log.Printf("failed to decode cookie proxy_aws_creds: %s", err)
+				log.Printf("failed to decode cookie proxy_aws_creds: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
 			}
 			var creds provider.AWSCreds
 			err = json.Unmarshal(decodedCreds, &creds)
 			if err != nil {
-				log.Printf("failed to unmarshal cookie proxy_aws_creds: %s", err)
+				log.Printf("failed to unmarshal cookie proxy_aws_creds: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
 			}
@@ -59,7 +59,7 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			// Try to refresh token with existing creds
 			newToken, err := authProvider.Token(creds)
 			if err != nil {
-				log.Printf("failed to refresh token: %s", err)
+				log.Printf("failed to refresh token: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
 			}
@@ -78,7 +78,7 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 				break
 			}
 
-			log.Printf("failed to check if token is valid: %s", err)
+			log.Printf("failed to check if token is valid: %v", err)
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 
@@ -87,7 +87,7 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 		// create the reverse proxy
 		url, err := url.Parse(target)
 		if err != nil {
-			log.Printf("failed to parse target URL: %s", err)
+			log.Printf("failed to parse target URL: %v", err)
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
