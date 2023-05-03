@@ -258,6 +258,8 @@ func (p *ProviderAwsAdfs) Valid(token string) error {
 	// we take a 1 minute margin
 	expires := parsedCreationDate.Add(14 * time.Minute)
 
+	fmt.Println("Token expires at:", expires)
+
 	// Check if token expired
 	if time.Now().After(expires) {
 		return fmt.Errorf("token expired at %s", expires)
