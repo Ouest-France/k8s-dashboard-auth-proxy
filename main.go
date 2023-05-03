@@ -19,7 +19,7 @@ func main() {
 	debug := flag.Bool("debug", false, "Debug mode")
 	flag.Parse()
 
-	// Check that loginURL
+	// Check login URL
 	if *loginURL == "" {
 		fmt.Println("Login URL must be set")
 		os.Exit(1)
@@ -42,14 +42,14 @@ func main() {
 			os.Exit(1)
 		}
 	default:
-		fmt.Println("Auth provider must be 'adfs' or 'tanzu'")
+		fmt.Println("Auth provider must be 'aws-adfs' or 'tanzu'")
 		os.Exit(1)
 	}
 
 	// Server requests
 	err = proxy.Server(*dashboardURL, authProvider, *debug)
 	if err != nil {
-		fmt.Printf("failed to start proxy: %s", err)
+		fmt.Printf("Failed to start proxy: %s", err)
 		os.Exit(1)
 	}
 }

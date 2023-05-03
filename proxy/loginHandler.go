@@ -32,14 +32,14 @@ func loginGetHandler(w http.ResponseWriter, r *http.Request) {
 	// Parse login template
 	tmpl, err := template.New("login").Parse(loginPageTemplate)
 	if err != nil {
-		log.Printf("failed to parse login page template: %s", err)
+		log.Printf("failed to parse login page template: %v", err)
 		return
 	}
 
 	// Execute template with login error if provided in URL
 	err = tmpl.ExecuteTemplate(w, "login", loginErrorMessage)
 	if err != nil {
-		log.Printf("failed to execute login page template: %s", err)
+		log.Printf("failed to execute login page template: %v", err)
 		return
 	}
 }
@@ -62,22 +62,22 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 
 				if username == "" || password == "" {
 					log.Printf("username or password not provided")
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password not provided")), http.StatusFound)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Username or password not provided")), http.StatusFound)
 					return
 				}
 
 				// Authenticate user
 				assertion, roles, err := adfsProvider.Login(username, password)
 				if err != nil {
-					log.Printf("failed to authenticate user: %s", err)
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Authentication failed")), http.StatusFound)
+					log.Printf("failed to authenticate user: %v", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Authentication failed")), http.StatusFound)
 					return
 				}
 
 				// Parse role template
 				tmpl, err := template.New("role").Parse(rolePageTemplate)
 				if err != nil {
-					log.Printf("failed to parse role page template: %s", err)
+					log.Printf("failed to parse role page template: %v", err)
 					return
 				}
 
@@ -90,8 +90,8 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 					Roles:     roles,
 				})
 				if err != nil {
-					log.Printf("failed to execute role page template: %s", err)
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to execute role page template")), http.StatusFound)
+					log.Printf("failed to execute role page template: %v", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Failed to execute role page template")), http.StatusFound)
 					return
 				}
 			case "role":
@@ -101,7 +101,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 				role := r.FormValue("role")
 				if role == "" {
 					log.Printf("role not provided")
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Role not provided")), http.StatusFound)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Role not provided")), http.StatusFound)
 					return
 				}
 
@@ -109,23 +109,23 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 				assertion := r.FormValue("assertion")
 				if assertion == "" {
 					log.Printf("assertion not provided")
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Assertion not provided")), http.StatusFound)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Assertion not provided")), http.StatusFound)
 					return
 				}
 
 				// Assume role with SAML assertion
 				creds, err := adfsProvider.AssumeRole(assertion, role)
 				if err != nil {
-					log.Printf("failed to assume role: %s", err)
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to assume role")), http.StatusFound)
+					log.Printf("failed to assume role: %v", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Failed to assume role")), http.StatusFound)
 					return
 				}
 
 				// Marshal credentials to base64 encoded JSON and store them in proxy_aws_creds cookie
 				jsonCreds, err := json.Marshal(creds)
 				if err != nil {
-					log.Printf("failed to marshal credentials: %s", err)
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to marshal credentials")), http.StatusFound)
+					log.Printf("failed to marshal credentials: %v", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Failed to marshal credentials")), http.StatusFound)
 					return
 				}
 				b64JsonCreds := base64.StdEncoding.EncodeToString(jsonCreds)
@@ -134,8 +134,8 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 				// Get token from credentials
 				token, err := adfsProvider.Token(creds)
 				if err != nil {
-					log.Printf("failed to get token: %s", err)
-					http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Failed to get token")), http.StatusFound)
+					log.Printf("failed to get token: %v", err)
+					http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Failed to get token")), http.StatusFound)
 					return
 				}
 
@@ -155,7 +155,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 
 			if username == "" || password == "" {
 				log.Printf("username or password not provided")
-				http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Username or password not provided")), http.StatusFound)
+				http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Username or password not provided")), http.StatusFound)
 				return
 			}
 
@@ -163,8 +163,8 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 			tanzuProvider := authProvider
 			token, err := tanzuProvider.Login(username, password)
 			if err != nil {
-				log.Printf("failed to authenticate user: %s", err)
-				http.Redirect(w, r, fmt.Sprintf("/login?error=%s", url.QueryEscape("Authentication failed")), http.StatusFound)
+				log.Printf("failed to authenticate user: %v", err)
+				http.Redirect(w, r, fmt.Sprintf("/login?error=%v", url.QueryEscape("Authentication failed")), http.StatusFound)
 				return
 			}
 
