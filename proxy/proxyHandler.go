@@ -59,6 +59,13 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			// Try to refresh token with existing creds
 			newToken, err := authProvider.Token(creds)
 			if err != nil {
+				// Delete cookie proxy_aws_creds
+				http.SetCookie(w, &http.Cookie{
+					Name:   "proxy_aws_creds",
+					Value:  "",
+					MaxAge: -1,
+				})
+
 				log.Printf("failed to refresh token: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return

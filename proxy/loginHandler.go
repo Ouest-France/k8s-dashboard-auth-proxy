@@ -129,7 +129,7 @@ func loginPostHandler(authProvider provider.Provider) func(w http.ResponseWriter
 					return
 				}
 				b64JsonCreds := base64.StdEncoding.EncodeToString(jsonCreds)
-				http.SetCookie(w, &http.Cookie{Name: "proxy_aws_creds", Value: b64JsonCreds})
+				http.SetCookie(w, &http.Cookie{Name: "proxy_aws_creds", Value: b64JsonCreds, MaxAge: 36000})
 
 				// Get token from credentials
 				token, err := adfsProvider.Token(creds)
