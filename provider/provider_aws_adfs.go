@@ -187,6 +187,11 @@ func (p *ProviderAwsAdfs) AssumeRole(SAMLAssertion, role string) (AWSCreds, erro
 // Token returns a Kubernetes token based on temporary AWS credentials
 func (p *ProviderAwsAdfs) Token(tmpCreds AWSCreds) (string, error) {
 
+	// Check if the temporary credentials are expired
+	if tmpCreds.Expires.Before(time.Now()) {
+		return "", fmt.Errorf("temporary credentials expired")
+	}
+
 	// Set temporary credentials
 	creds := &awsconfig.AWSCredentials{
 		AWSAccessKey:     tmpCreds.AccessKey,
