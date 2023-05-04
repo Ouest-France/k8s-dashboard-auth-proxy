@@ -1,6 +1,6 @@
 # k8s-dashboard-auth-proxy
 
-This is an reverse authentication proxy for Kubernetes dashboard hosted in managed **VMware Tanzu** clusters.
+This is an reverse authentication proxy for Kubernetes dashboard hosted in **AWS** or **VMware Tanzu** clusters.
 
 ## How it works
 
