@@ -36,6 +36,11 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			// Get cookier proxy_aws_creds
 			b64Creds, err := r.Cookie("proxy_aws_creds")
 			if err != nil || b64Creds.Value == "" {
+				err = deleteTokenCookie(w, r)
+				if err != nil {
+					log.Printf("failed to delete cookie: %v", err)
+				}
+
 				log.Printf("failed to get cookie proxy_aws_creds: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
@@ -44,6 +49,11 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			// Extract creds from cookie
 			decodedCreds, err := base64.StdEncoding.DecodeString(b64Creds.Value)
 			if err != nil {
+				err = deleteTokenCookie(w, r)
+				if err != nil {
+					log.Printf("failed to delete cookie: %v", err)
+				}
+
 				log.Printf("failed to decode cookie proxy_aws_creds: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
@@ -51,6 +61,11 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			var creds provider.AWSCreds
 			err = json.Unmarshal(decodedCreds, &creds)
 			if err != nil {
+				err = deleteTokenCookie(w, r)
+				if err != nil {
+					log.Printf("failed to delete cookie: %v", err)
+				}
+
 				log.Printf("failed to unmarshal cookie proxy_aws_creds: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
 				return
@@ -59,12 +74,10 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			// Try to refresh token with existing creds
 			newToken, err := authProvider.Token(creds)
 			if err != nil {
-				// Delete cookie proxy_aws_creds
-				http.SetCookie(w, &http.Cookie{
-					Name:   "proxy_aws_creds",
-					Value:  "",
-					MaxAge: -1,
-				})
+				err = deleteTokenCookie(w, r)
+				if err != nil {
+					log.Printf("failed to delete cookie: %v", err)
+				}
 
 				log.Printf("failed to refresh token: %v", err)
 				http.Redirect(w, r, "/login", http.StatusFound)
@@ -83,6 +96,11 @@ func proxyHandler(target string, authProvider provider.Provider) func(w http.Res
 			err = authProvider.Valid(token)
 			if err == nil {
 				break
+			}
+
+			err = deleteTokenCookie(w, r)
+			if err != nil {
+				log.Printf("failed to delete cookie: %v", err)
 			}
 
 			log.Printf("failed to check if token is valid: %v", err)
