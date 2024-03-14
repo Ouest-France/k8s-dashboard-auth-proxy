@@ -19,11 +19,11 @@ func setTokenCookie(w http.ResponseWriter, token string, cookieMaxSize int) {
 	splittedToken := splitToken(token, cookieMaxSize)
 
 	// We store the number of token parts in proxy_auth_token_parts cookie
-	http.SetCookie(w, &http.Cookie{Name: "proxy_auth_token_parts", Value: fmt.Sprint(len(splittedToken))})
+	http.SetCookie(w, &http.Cookie{Name: "proxy_auth_token_parts", Value: fmt.Sprint(len(splittedToken)), Path: "/"})
 
 	// We store each token parts in a separate cookie with name proxy_auth_token_X
 	for partIndex, partValue := range splittedToken {
-		http.SetCookie(w, &http.Cookie{Name: fmt.Sprintf("proxy_auth_token_%d", partIndex), Value: partValue})
+		http.SetCookie(w, &http.Cookie{Name: fmt.Sprintf("proxy_auth_token_%d", partIndex), Value: partValue, Path: "/"})
 	}
 }
 
@@ -55,20 +55,28 @@ func getTokenCookie(r *http.Request) (string, error) {
 func deleteTokenCookie(w http.ResponseWriter, r *http.Request) error {
 
 	// Delete proxy_auth_token_parts cookie
-	http.SetCookie(w, &http.Cookie{Name: "proxy_auth_token_parts", Value: "", MaxAge: 0})
+	http.SetCookie(w, &http.Cookie{Name: "proxy_auth_token_parts", Value: "", MaxAge: 0, Path: "/"})
 
 	// Compile regex to extract token parts cookies
 	cookieRegex, err := regexp.Compile("proxy_auth_token_.*")
 	if err != nil {
-		return fmt.Errorf("compiling proxy auth token regex: %s\n", err)
+		return fmt.Errorf("compiling proxy auth token regex: %s", err)
 	}
 
 	// List token parts cookies
 	for _, cookie := range r.Cookies() {
 		if cookieRegex.MatchString(cookie.Name) {
-			http.SetCookie(w, &http.Cookie{Name: cookie.Name, Value: "", MaxAge: -1})
+			http.SetCookie(w, &http.Cookie{Name: cookie.Name, Value: "", MaxAge: -1, Path: "/"})
 		}
 	}
+
+	// Delete cookie proxy_aws_creds
+	http.SetCookie(w, &http.Cookie{
+		Name:   "proxy_aws_creds",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
 
 	return nil
 }
